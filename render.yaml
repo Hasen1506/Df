@@ -1,0 +1,21 @@
+# render.yaml — Render Blueprint (optional Infrastructure-as-Code).
+#
+# You do NOT need this file to deploy: you can create the same service by hand
+# in the dashboard (New > Web Service). With it committed, "New > Blueprint"
+# wires everything up automatically.
+#
+# It hosts the FastAPI app (api:app), which serves BOTH the JSON API and the
+# dashboard at /. Render injects $PORT at runtime; uvicorn must bind it on
+# 0.0.0.0 or the deploy is marked unhealthy.
+services:
+  - type: web
+    name: demand-forecasting-cockpit
+    runtime: python
+    plan: free                 # free spins down when idle; upgrade for always-on
+    region: oregon             # or frankfurt / singapore / ohio
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health   # api.py already exposes this; returns 200
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
