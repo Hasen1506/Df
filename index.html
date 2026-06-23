@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Demand Planner's Cockpit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0d1015; --panel:#14181f; --panel2:#1a1f29; --border:#262d38;
+    --ink:#e7eaf0; --muted:#8b94a3; --faint:#5b6473;
+    --signal:#45c8f5;          /* clean demand / forecast */
+    --raw:#e0a13c;             /* raw, stockout-constrained sales */
+    --good:#4ad6a0; --bad:#f0746a; --accent2:#9d8cff;
+    --mono:'JetBrains Mono',monospace; --body:'Manrope',sans-serif;
+    --display:'Fraunces',serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);
+       font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:var(--signal)}
+  .wrap{max-width:1240px;margin:0 auto;padding:0 22px 80px}
+
+  /* ---- top bar ---- */
+  header{border-bottom:1px solid var(--border);background:linear-gradient(180deg,#10141b, #0d1015);
+         position:sticky;top:0;z-index:20}
+  .bar{max-width:1240px;margin:0 auto;padding:16px 22px;display:flex;gap:18px;
+       align-items:center;flex-wrap:wrap}
+  .brand{font-family:var(--display);font-weight:600;font-size:21px;letter-spacing:-.02em}
+  .brand .dot{color:var(--signal)}
+  .brand small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--faint);
+               font-weight:400;letter-spacing:.04em;margin-top:2px;text-transform:uppercase}
+  .controls{margin-left:auto;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .ctrl{display:flex;flex-direction:column;gap:4px}
+  .ctrl label{font-family:var(--mono);font-size:10px;color:var(--muted);
+              text-transform:uppercase;letter-spacing:.05em}
+  .ctrl .val{font-family:var(--mono);color:var(--signal);font-size:11px}
+  input[type=range]{width:96px;accent-color:var(--signal);background:transparent}
+  .toggle{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .btn{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.03em;
+       border:1px solid var(--signal);background:rgba(69,200,245,.08);color:var(--signal);
+       padding:9px 16px;border-radius:7px;cursor:pointer;transition:.15s}
+  .btn:hover{background:rgba(69,200,245,.18)}
+  .btn.ghost{border-color:var(--border);color:var(--muted);background:transparent}
+  .btn.ghost:hover{border-color:var(--faint);color:var(--ink)}
+  .btn:disabled{opacity:.5;cursor:wait}
+
+  /* ---- hero ---- */
+  .hero{padding:34px 0 14px}
+  .hero h1{font-family:var(--display);font-weight:500;font-size:34px;line-height:1.12;
+           letter-spacing:-.025em;margin:0 0 10px;max-width:760px}
+  .hero h1 em{font-style:italic;color:var(--signal)}
+  .hero p{color:var(--muted);max-width:680px;margin:0;font-size:15px}
+
+  /* ---- kpis ---- */
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:26px 0 8px}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:15px 16px}
+  .kpi .k{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;
+          letter-spacing:.05em}
+  .kpi .v{font-family:var(--display);font-size:27px;font-weight:500;margin-top:7px;letter-spacing:-.02em}
+  .kpi .s{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:3px}
+  .kpi .v.sig{color:var(--signal)} .kpi .v.good{color:var(--good)}
+
+  /* ---- sections ---- */
+  section{margin-top:34px}
+  .sec-head{display:flex;align-items:baseline;gap:13px;margin-bottom:6px}
+  .sec-head .n{font-family:var(--mono);font-size:11px;color:var(--signal);
+               border:1px solid var(--border);border-radius:5px;padding:2px 7px}
+  .sec-head h2{font-family:var(--display);font-weight:500;font-size:21px;margin:0;letter-spacing:-.02em}
+  .sec-head p{color:var(--muted);font-size:13px;margin:0 0 0 auto;max-width:520px;text-align:right}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:13px;
+        padding:20px;margin-top:14px}
+
+  /* chart card */
+  .chart-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:12px}
+  select{font-family:var(--mono);font-size:12px;background:var(--panel2);color:var(--ink);
+         border:1px solid var(--border);border-radius:7px;padding:8px 11px;cursor:pointer}
+  .legend{display:flex;gap:16px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .legend i{display:inline-block;width:11px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+  .badge{font-family:var(--mono);font-size:11px;padding:3px 9px;border-radius:6px;
+         background:rgba(69,200,245,.1);color:var(--signal);border:1px solid rgba(69,200,245,.25)}
+
+  /* tables */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.05em;
+     color:var(--muted);text-align:right;padding:9px 11px;border-bottom:1px solid var(--border);font-weight:500}
+  th:first-child,td:first-child{text-align:left}
+  td{padding:10px 11px;border-bottom:1px solid #1d2430;font-variant-numeric:tabular-nums}
+  tr:last-child td{border-bottom:none}
+  td.mono,th.mono{font-family:var(--mono)}
+  tbody tr:hover{background:#161c26}
+  .pill{font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:20px;display:inline-block}
+  .p-Smooth{background:rgba(74,214,160,.12);color:var(--good)}
+  .p-Erratic{background:rgba(224,161,60,.14);color:var(--raw)}
+  .p-Intermittent{background:rgba(157,140,255,.14);color:var(--accent2)}
+  .p-Lumpy{background:rgba(240,116,106,.14);color:var(--bad)}
+  .fva{position:relative;font-family:var(--mono);font-size:12px}
+  .fva b{position:relative;z-index:2}
+  .seg-grid{display:grid;grid-template-columns:auto repeat(3,1fr);gap:7px;margin-top:6px}
+  .seg-grid .h{font-family:var(--mono);font-size:10px;color:var(--muted);text-align:center;padding:6px}
+  .seg-grid .rh{font-family:var(--mono);font-size:11px;color:var(--signal);align-self:center}
+  .cell{background:var(--panel2);border:1px solid var(--border);border-radius:9px;padding:11px;min-height:64px}
+  .cell .c-n{font-family:var(--display);font-size:20px}
+  .cell .c-l{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:2px}
+  .cell.hot{border-color:rgba(69,200,245,.4);background:rgba(69,200,245,.05)}
+
+  .foot{margin-top:46px;padding-top:20px;border-top:1px solid var(--border);
+        font-family:var(--mono);font-size:11px;color:var(--faint);display:flex;
+        justify-content:space-between;flex-wrap:wrap;gap:10px}
+  .loading{display:none;align-items:center;gap:10px;color:var(--muted);font-family:var(--mono);font-size:12px}
+  .spin{width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--signal);
+        border-radius:50%;animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media(max-width:880px){.kpis{grid-template-columns:repeat(2,1fr)}.hero h1{font-size:27px}
+    .sec-head p{display:none}.seg-grid{font-size:11px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="brand">Demand Planner's Cockpit<span class="dot">.</span>
+      <small>clean → segment → backtest → forecast → reconcile</small></div>
+    <div class="controls">
+      <div class="ctrl"><label>Horizon <span class="val" id="hv">6</span>mo</label>
+        <input type="range" id="horizon" min="3" max="12" value="6"></div>
+      <div class="ctrl"><label>Folds <span class="val" id="fv">4</span></label>
+        <input type="range" id="folds" min="2" max="6" value="4"></div>
+      <div class="ctrl"><label>Outlier k <span class="val" id="kv">4.0</span></label>
+        <input type="range" id="k" min="25" max="60" value="40"></div>
+      <label class="toggle"><input type="checkbox" id="allmodels"> all models</label>
+      <input type="file" id="csv" accept=".csv" style="display:none">
+      <button class="btn ghost" onclick="document.getElementById('csv').click()" id="upbtn">Upload CSV</button>
+      <button class="btn" id="run" onclick="runPipeline()">Run engine</button>
+      <div class="loading" id="loading"><div class="spin"></div><span id="loadtxt">running…</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>Your sales history lies. This finds the <em>demand</em> underneath — then forecasts it.</h1>
+    <p>A working demand-planning engine: it de-censors stockouts, strips one-off
+       outliers without touching seasonality, segments every SKU by demand
+       pattern, backtests a portfolio of models per series, and keeps only the
+       ones that beat a seasonal-naive baseline (Forecast Value Added).</p>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section>
+    <div class="sec-head"><span class="n">01</span><h2>Forecast &amp; signal recovery</h2>
+      <p>Amber is what you shipped (capped by stock). Cyan is recovered demand. Dashed is the forward forecast from the model the backtest picked.</p></div>
+    <div class="card">
+      <div class="chart-top">
+        <select id="series" onchange="drawSeries()"></select>
+        <div style="display:flex;gap:14px;align-items:center">
+          <span class="badge" id="modelBadge">—</span>
+          <div class="legend">
+            <span><i style="background:var(--raw)"></i>raw sales</span>
+            <span><i style="background:var(--signal)"></i>clean demand</span>
+            <span><i style="background:var(--signal);opacity:.6"></i>forecast</span>
+          </div>
+        </div>
+      </div>
+      <div style="height:340px"><canvas id="chart"></canvas></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">02</span><h2>Segmentation — ADI / CV² &amp; ABC×XYZ</h2>
+      <p>Which SKUs deserve which treatment. Pattern decides the model class; ABC×XYZ is the triage map for where error costs money.</p></div>
+    <div class="card">
+      <div style="display:grid;grid-template-columns:1.1fr .9fr;gap:26px" id="segWrap">
+        <div><table id="segTable"></table></div>
+        <div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">ABC × XYZ grid &nbsp;(SKU count)</div>
+          <div class="seg-grid" id="segGrid"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">03</span><h2>Model leaderboard &amp; value added</h2>
+      <p>The model chosen per series, its out-of-sample error, directional bias, and how much accuracy it adds over seasonal-naive.</p></div>
+    <div class="card"><table id="selTable"></table></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">04</span><h2>Backtest detail</h2>
+      <p>Every candidate that competed for the selected series — rolling-origin, out-of-sample.</p></div>
+    <div class="card">
+      <div class="chart-top"><select id="btSeries" onchange="drawBacktest()"></select>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--faint)">ranked by WMAPE (RMSE for intermittent)</span></div>
+      <table id="btTable"></table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">05</span><h2>Reconciled total</h2>
+      <p>Leaf forecasts summed bottom-up into a coherent network total.</p></div>
+    <div class="card"><div style="height:230px"><canvas id="totChart"></canvas></div></div>
+  </section>
+
+  <div class="foot">
+    <span id="footMeta">engine idle</span>
+    <span>FastAPI + statsmodels + LightGBM · runs locally</span>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let DATA=null, chart=null, totChart=null;
+const C = getComputedStyle(document.documentElement);
+const col = n => C.getPropertyValue(n).trim();
+
+// live control labels
+horizon.oninput = e => hv.textContent = e.target.value;
+folds.oninput   = e => fv.textContent = e.target.value;
+k.oninput       = e => kv.textContent = (e.target.value/10).toFixed(1);
+csv.onchange    = e => { upbtn.textContent = e.target.files[0]?.name?.slice(0,18) || 'Upload CSV'; };
+
+async function runPipeline(){
+  $('#run').disabled = true; $('#loading').style.display='flex';
+  $('#loadtxt').textContent = 'fitting models…';
+  const fd = new FormData();
+  fd.append('horizon', horizon.value);
+  fd.append('n_folds', folds.value);
+  fd.append('outlier_k', (k.value/10).toFixed(1));
+  fd.append('allow_all_models', allmodels.checked ? 'true':'false');
+  if(csv.files[0]) fd.append('file', csv.files[0]);
+  try{
+    const r = await fetch('/api/run', {method:'POST', body:fd});
+    const j = await r.json();
+    if(j.error){ alert('Engine error: '+j.error+'\n\n'+(j.hint||'')); return; }
+    DATA = j; render();
+  }catch(err){ alert('Request failed: '+err+'\nIs the API running? (uvicorn api:app)'); }
+  finally{ $('#run').disabled=false; $('#loading').style.display='none'; }
+}
+
+function render(){
+  const m = DATA.meta;
+  // KPIs
+  const sel = DATA.selections;
+  const avgFva = sel.filter(s=>s.FVA_vs_SNaive!=null)
+                    .reduce((a,s)=>a+s.FVA_vs_SNaive,0)/Math.max(sel.length,1);
+  const kpis = [
+    ['SKU-locations', m.n_series, 'series planned'],
+    ['Stockout months', m.stockout_months, 'demand recovered', 'sig'],
+    ['Outliers cleaned', m.outliers_corrected, 'seasonality-aware'],
+    ['Avg FVA', '+'+avgFva.toFixed(1)+'<span style="font-size:15px"> pts</span>', 'vs seasonal-naive', 'good'],
+    ['ML backend', m.ml_backend.split(' ')[0], m.source]
+  ];
+  $('#kpis').innerHTML = kpis.map(k=>`<div class="kpi"><div class="k">${k[0]}</div>
+     <div class="v ${k[3]||''}">${k[1]}</div><div class="s">${k[2]}</div></div>`).join('');
+
+  // series selectors
+  const keys = Object.keys(DATA.series);
+  $('#series').innerHTML = keys.map(k=>`<option>${k}</option>`).join('');
+  $('#btSeries').innerHTML = keys.map(k=>`<option>${k}</option>`).join('');
+  drawSeries(); drawBacktest(); drawSegmentation(); drawSelections(); drawTotal();
+  $('#footMeta').textContent =
+    `source: ${m.source} · horizon ${m.horizon}mo · ${m.n_folds} folds · outlier k=${$('#kv').textContent}`;
+}
+
+function drawSeries(){
+  const key = $('#series').value, s = DATA.series[key];
+  $('#modelBadge').textContent = 'selected: '+s.best_model;
+  const hist = s.history_dates, fc = s.forecast_dates;
+  const labels = hist.concat(fc);
+  const pad = arr => arr;
+  const cleanLine = s.history.concat(fc.map(()=>null));
+  const rawLine   = s.raw_sales.concat(fc.map(()=>null));
+  const fcLine    = hist.map(()=>null);
+  fcLine[fcLine.length-1] = s.history[s.history.length-1]; // connect
+  const forecast  = fcLine.concat(s.forecast);
+  if(chart) chart.destroy();
+  chart = new Chart($('#chart'), {type:'line',
+    data:{labels, datasets:[
+      {label:'raw sales', data:rawLine, borderColor:col('--raw'),
+       borderWidth:1.4, pointRadius:0, tension:.25, borderDash:[2,2]},
+      {label:'clean demand', data:cleanLine, borderColor:col('--signal'),
+       backgroundColor:'rgba(69,200,245,.06)', borderWidth:2.2, pointRadius:0,
+       tension:.25, fill:true},
+      {label:'forecast', data:forecast, borderColor:col('--signal'),
+       borderWidth:2.2, borderDash:[6,4], pointRadius:2.4,
+       pointBackgroundColor:col('--signal'), tension:.2}
+    ]},
+    options:chartOpts()});
+}
+
+function chartOpts(extra={}){
+  return {responsive:true, maintainAspectRatio:false, animation:{duration:380},
+    interaction:{mode:'index',intersect:false},
+    plugins:{legend:{display:false},
+      tooltip:{backgroundColor:'#0d1015',borderColor:col('--border'),borderWidth:1,
+        titleFont:{family:"'JetBrains Mono'",size:10},bodyFont:{family:"'JetBrains Mono'",size:11},
+        padding:10}},
+    scales:{
+      x:{grid:{color:'#1b212b'},ticks:{color:col('--faint'),
+         font:{family:"'JetBrains Mono'",size:9},maxTicksLimit:12}},
+      y:{grid:{color:'#1b212b'},ticks:{color:col('--faint'),
+         font:{family:"'JetBrains Mono'",size:9}},beginAtZero:false}},
+    ...extra};
+}
+
+function drawSegmentation(){
+  const seg = DATA.segmentation;
+  $('#segTable').innerHTML =
+    `<thead><tr><th>SKU · location</th><th>Pattern</th><th class="mono">ADI</th>
+       <th class="mono">CV²</th><th>ABC</th><th>XYZ</th><th class="mono">Annual ₹</th></tr></thead>
+     <tbody>${seg.map(r=>`<tr>
+       <td>${r.product_id} · ${r.location}<div style="color:var(--faint);font-size:11px">${r.product_name}</div></td>
+       <td><span class="pill p-${r.pattern}">${r.pattern}</span></td>
+       <td class="mono">${r.ADI}</td><td class="mono">${r.CV2}</td>
+       <td class="mono">${r.ABC}</td><td class="mono">${r.XYZ}</td>
+       <td class="mono">₹${(r.annual_value/1e6).toFixed(1)}M</td></tr>`).join('')}</tbody>`;
+  // ABC×XYZ grid
+  const grid={}, xyz=['X','Y','Z'], abc=['A','B','C'];
+  seg.forEach(r=>{const key=r.ABC+r.XYZ; grid[key]=(grid[key]||0)+1;});
+  let html=`<div class="h"></div>${xyz.map(x=>`<div class="h">${x} · ${x=='X'?'steady':x=='Y'?'variable':'volatile'}</div>`).join('')}`;
+  abc.forEach(a=>{ html+=`<div class="rh">${a}</div>`;
+    xyz.forEach(x=>{const c=grid[a+x]||0;
+      html+=`<div class="cell ${c?'hot':''}"><div class="c-n">${c||'·'}</div><div class="c-l">${a}${x}</div></div>`;});});
+  $('#segGrid').innerHTML=html;
+}
+
+function fvaCell(v){
+  if(v==null) return '<span class="mono" style="color:var(--faint)">n/a</span>';
+  const c = v>0?col('--good'):col('--bad'); const w=Math.min(Math.abs(v)*6,100);
+  const bg = v>0?'rgba(74,214,160,.12)':'rgba(240,116,106,.12)';
+  return `<span class="fva"><span style="position:absolute;left:0;top:0;bottom:0;width:${w}%;background:${bg};border-radius:4px"></span>
+    <b style="color:${c}">${v>0?'+':''}${v.toFixed(2)}</b></span>`;
+}
+function biasCell(v){ if(v==null)return '—';
+  const c=Math.abs(v)<3?col('--muted'):(v>0?col('--raw'):col('--accent2'));
+  return `<span class="mono" style="color:${c}">${v>0?'+':''}${v.toFixed(1)}%</span>`;}
+
+function drawSelections(){
+  const sel=DATA.selections;
+  $('#selTable').innerHTML =
+    `<thead><tr><th>SKU · location</th><th>Pattern</th><th>Chosen model</th>
+       <th class="mono">WMAPE</th><th class="mono">RMSE</th><th>Bias</th><th>FVA vs S-naive</th></tr></thead>
+     <tbody>${sel.map(r=>`<tr>
+       <td>${r.product_id} · ${r.location}</td>
+       <td><span class="pill p-${r.pattern}">${r.pattern}</span></td>
+       <td class="mono" style="color:var(--signal)">${r.best_model}</td>
+       <td class="mono">${r.WMAPE!=null?r.WMAPE.toFixed(1)+'%':'—'}</td>
+       <td class="mono">${r.RMSE!=null?r.RMSE.toFixed(1):'—'}</td>
+       <td>${biasCell(r.BIAS_pct)}</td>
+       <td>${fvaCell(r.FVA_vs_SNaive)}</td></tr>`).join('')}</tbody>`;
+}
+
+function drawBacktest(){
+  const key=$('#btSeries').value, bt=DATA.backtests[key];
+  $('#btTable').innerHTML =
+    `<thead><tr><th>Model</th><th class="mono">WMAPE</th><th class="mono">MAE</th>
+       <th class="mono">RMSE</th><th>Bias</th><th class="mono">Track sig</th><th>FVA</th></tr></thead>
+     <tbody>${bt.map((r,i)=>`<tr>
+       <td class="mono" style="${i===0?'color:var(--signal)':''}">${i===0?'★ ':''}${r.model}</td>
+       <td class="mono">${r.WMAPE!=null?r.WMAPE.toFixed(1):'—'}</td>
+       <td class="mono">${r.MAE!=null?r.MAE.toFixed(1):'—'}</td>
+       <td class="mono">${r.RMSE!=null?r.RMSE.toFixed(1):'—'}</td>
+       <td>${biasCell(r.BIAS_pct)}</td>
+       <td class="mono" style="color:${Math.abs(r.TrackSignal)>4?col('--bad'):col('--faint')}">${r.TrackSignal}</td>
+       <td>${fvaCell(r.FVA_vs_SNaive)}</td></tr>`).join('')}</tbody>`;
+}
+
+function drawTotal(){
+  const t=DATA.hierarchy_total;
+  if(totChart) totChart.destroy();
+  totChart=new Chart($('#totChart'),{type:'bar',
+    data:{labels:t.map(r=>'M+'+r.step),
+      datasets:[{data:t.map(r=>r.forecast),backgroundColor:'rgba(69,200,245,.55)',
+        borderColor:col('--signal'),borderWidth:1,borderRadius:5}]},
+    options:chartOpts({plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>'Total demand: '+Math.round(c.raw).toLocaleString()}}}})});
+}
+
+// auto-run on load
+runPipeline();
+</script>
+</body>
+</html>
